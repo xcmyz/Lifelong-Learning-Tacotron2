@@ -19,34 +19,38 @@ import time
 
 def main(args):
     # Get device
-    device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Define model
     model = nn.DataParallel(Tacotron2(hp)).to(device)
     ewc = None
     print("Model Have Been Defined")
     num_param = sum(param.numel() for param in model.parameters())
-    print('Number of Tacotron Parameters:', num_param)
+    print("Number of Tacotron Parameters:", num_param)
 
     # Get dataset
-    dataset = Tacotron2Dataset(hp.dataset_path)
+    dataset = Tacotron2Dataset()
 
     # Optimizer
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=hp.learning_rate, weight_decay=hp.weight_decay)
+        model.parameters(), lr=hp.learning_rate, weight_decay=hp.weight_decay
+    )
 
     # Criterion
     criterion = Tacotron2Loss()
 
     # Load checkpoint if exists
     try:
-        checkpoint = torch.load(os.path.join(
-            hp.checkpoint_path, 'checkpoint_%d.pth.tar' % args.restore_step))
-        model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
+        checkpoint = torch.load(
+            os.path.join(
+                hp.checkpoint_path, "checkpoint_%d.pth.tar" % args.restore_step
+            )
+        )
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
         print("\n---Model Restored at Step %d---\n" % args.restore_step)
         if args.ewc_train:
-            old_dataset = get_old_dataset(hp.dataset_path, hp.sample_num)
+            old_dataset = get_old_dataset(hp.VCTK_dataset_path, hp.sample_num)
             ewc = EWC(model, old_dataset)
 
     except:
@@ -67,20 +71,27 @@ def main(args):
 
     for epoch in range(hp.epochs):
         # Get training loader
-        training_loader = DataLoader(dataset,
-                                     batch_size=hp.batch_size**2,
-                                     shuffle=True,
-                                     collate_fn=collate_fn,
-                                     drop_last=True,
-                                     num_workers=cpu_count())
+        training_loader = DataLoader(
+            dataset,
+            batch_size=hp.batch_size ** 2,
+            shuffle=True,
+            collate_fn=collate_fn,
+            drop_last=True,
+            num_workers=cpu_count(),
+        )
         total_step = hp.epochs * len(training_loader) * hp.batch_size
 
         for i, batchs in enumerate(training_loader):
             for j, data_of_batch in enumerate(batchs):
                 start_time = time.clock()
 
-                current_step = i * hp.batch_size + j + args.restore_step + \
-                    epoch * len(training_loader)*hp.batch_size + 1
+                current_step = (
+                    i * hp.batch_size
+                    + j
+                    + args.restore_step
+                    + epoch * len(training_loader) * hp.batch_size
+                    + 1
+                )
 
                 # Init
                 optimizer.zero_grad()
@@ -88,20 +99,38 @@ def main(args):
                 # Get Data
                 character = torch.from_numpy(
                     data_of_batch["text"]).long().to(device)
-                mel_target = torch.from_numpy(data_of_batch["mel_target"]).float().to(
-                    device).contiguous().transpose(1, 2)
-                stop_target = torch.from_numpy(
-                    data_of_batch["stop_token"]).float().to(device)
-                input_lengths = torch.from_numpy(
-                    data_of_batch["length_text"]).int().to(device)
-                output_lengths = torch.from_numpy(
-                    data_of_batch["length_mel"]).int().to(device)
-                speaker_id = torch.Tensor([0 for _ in range(hp.speaker_size)])
-                speaker_id[args.speaker_id] = 1
-                speaker_id = speaker_id.float().to(device)
+                mel_target = (
+                    torch.from_numpy(data_of_batch["mel_target"])
+                    .float()
+                    .to(device)
+                    .contiguous()
+                    .transpose(1, 2)
+                )
+                stop_target = (
+                    torch.from_numpy(
+                        data_of_batch["stop_token"]).float().to(device)
+                )
+                input_lengths = (
+                    torch.from_numpy(
+                        data_of_batch["length_text"]).int().to(device)
+                )
+                output_lengths = (
+                    torch.from_numpy(
+                        data_of_batch["length_mel"]).int().to(device)
+                )
+                speaker_ids = (
+                    torch.Tensor(data_of_batch["speaker_id"]).long().to(device)
+                )
 
                 # Forward
-                batch = character, input_lengths, mel_target, stop_target, output_lengths, speaker_id
+                batch = (
+                    character,
+                    input_lengths,
+                    mel_target,
+                    stop_target,
+                    output_lengths,
+                    speaker_ids,
+                )
                 x, y = model.module.parse_batch(batch)
 
                 y_pred = model(x)
@@ -122,27 +151,33 @@ def main(args):
                 m_p_l = mel_postnet_loss.item()
                 s_l = stop_pred_loss.item()
 
-                with open(os.path.join("logger", "total_loss.txt"), "a") as f_total_loss:
-                    f_total_loss.write(str(t_l)+"\n")
+                with open(
+                    os.path.join("logger", "total_loss.txt"), "a"
+                ) as f_total_loss:
+                    f_total_loss.write(str(t_l) + "\n")
 
                 with open(os.path.join("logger", "mel_loss.txt"), "a") as f_mel_loss:
-                    f_mel_loss.write(str(m_l)+"\n")
+                    f_mel_loss.write(str(m_l) + "\n")
 
-                with open(os.path.join("logger", "mel_postnet_loss.txt"), "a") as f_mel_postnet_loss:
-                    f_mel_postnet_loss.write(str(m_p_l)+"\n")
+                with open(
+                    os.path.join("logger", "mel_postnet_loss.txt"), "a"
+                ) as f_mel_postnet_loss:
+                    f_mel_postnet_loss.write(str(m_p_l) + "\n")
 
-                with open(os.path.join("logger", "stop_pred_loss.txt"), "a") as f_s_loss:
-                    f_s_loss.write(str(s_l)+"\n")
+                with open(
+                    os.path.join("logger", "stop_pred_loss.txt"), "a"
+                ) as f_s_loss:
+                    f_s_loss.write(str(s_l) + "\n")
 
                 if args.ewc_train:
                     with open(os.path.join("logger", "ewc_loss.txt"), "a") as f_e_loss:
-                        f_e_loss.write(str(ewc_loss.item())+"\n")
+                        f_e_loss.write(str(ewc_loss.item()) + "\n")
 
                 # Backward
                 total_loss.backward()
 
                 # Clipping gradients to avoid gradient explosion
-                nn.utils.clip_grad_norm_(model.parameters(), 1.)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
                 # Update weights
                 optimizer.step()
@@ -153,11 +188,19 @@ def main(args):
                     Now = time.clock()
 
                     str1 = "Epoch [{}/{}], Step [{}/{}], Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f};".format(
-                        epoch+1, hp.epochs, current_step, total_step, mel_loss.item(), mel_postnet_loss.item())
+                        epoch + 1,
+                        hp.epochs,
+                        current_step,
+                        total_step,
+                        mel_loss.item(),
+                        mel_postnet_loss.item(),
+                    )
                     str2 = "Stop Predicted Loss: {:.4f}, Total Loss: {:.4f}.".format(
-                        stop_pred_loss.item(), total_loss.item())
+                        stop_pred_loss.item(), total_loss.item()
+                    )
                     str3 = "Time Used: {:.3f}s, Estimated Time Remaining: {:.3f}s.".format(
-                        (Now-Start), (total_step-current_step)*np.mean(Time))
+                        (Now - Start), (total_step - current_step) * np.mean(Time)
+                    )
 
                     print("\n" + str1)
                     print(str2)
@@ -172,8 +215,15 @@ def main(args):
                         f_logger.write("\n")
 
                 if current_step % hp.save_step == 0:
-                    torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(
-                    )}, os.path.join(hp.checkpoint_path, 'checkpoint_%d.pth.tar' % current_step))
+                    torch.save(
+                        {
+                            "model": model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                        },
+                        os.path.join(
+                            hp.checkpoint_path, "checkpoint_%d.pth.tar" % current_step
+                        ),
+                    )
                     print("save model at step %d ..." % current_step)
 
                 end_time = time.clock()
@@ -188,25 +238,24 @@ def main(args):
 def adjust_learning_rate(optimizer, step):
     if step == 500000:
         for param_group in optimizer.param_groups:
-            param_group['lr'] = 0.0005
+            param_group["lr"] = 0.0005
 
     elif step == 1000000:
         for param_group in optimizer.param_groups:
-            param_group['lr'] = 0.0003
+            param_group["lr"] = 0.0003
 
     elif step == 2000000:
         for param_group in optimizer.param_groups:
-            param_group['lr'] = 0.0001
+            param_group["lr"] = 0.0001
 
     return optimizer
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--restore_step', type=int, default=0)
-    parser.add_argument('--speaker_id', type=int, default=0)
-    parser.add_argument('--ewc_train', type=bool, default=False)
-    parser.add_argument('---importance', type=float, default=1000.0)
+    parser.add_argument("--restore_step", type=int, default=0)
+    parser.add_argument("--ewc_train", type=bool, default=False)
+    parser.add_argument("---importance", type=float, default=1000.0)
     args = parser.parse_args()
 
     main(args)

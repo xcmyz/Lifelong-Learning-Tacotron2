@@ -4,7 +4,7 @@ from text import symbols
 num_mels = 80
 
 # Text
-text_cleaners = ['english_cleaners']
+text_cleaners = ["english_cleaners"]
 
 # Mel
 n_mel_channels = 80
@@ -19,11 +19,14 @@ postnet_n_convolutions = 5
 prenet_dim = 256
 
 # Speaker
-speaker_size = 128
+shuffle_speaker_file = "speaker_shuffled.txt"
+shuffle_speaker_num = 8
+max_speaker_num = 1024
+speaker_dim = 256
 
 # Encoder
 encoder_n_convolutions = 3
-encoder_embedding_dim = 512 + speaker_size
+encoder_embedding_dim = 512 + speaker_dim
 encoder_kernel_size = 5
 
 # Decoder
@@ -43,10 +46,10 @@ n_symbols = len(symbols)
 symbols_embedding_dim = 512
 
 # Train
-batch_size = 16
+batch_size = 2
 epochs = 10000
 sample_num = 100
-dataset_path = "./dataset"
+VCTK_dataset_path = "./data/VCTK-Corpus-Processed"
 checkpoint_path = "./model_new"
 logger_path = "./logger"
 learning_rate = 1e-3
